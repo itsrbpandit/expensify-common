@@ -3,11 +3,12 @@
  * WIP, This is in the process of migration from web-e. Please add methods to this as is needed.|
  * ----------------------------------------------------------------------------------------------
  */
-import _ from 'underscore';
 
 // Use this deferred lib so we don't have a dependency on jQuery (so we can use this module in mobile)
 import {Deferred} from 'simply-deferred';
+import {has} from 'lodash';
 import ExpensifyAPIDeferred from './APIDeferred';
+import * as Utils from './utils';
 
 /**
  * @param {Network} network
@@ -39,7 +40,7 @@ export default function API(network, args) {
      * Returns a promise that is rejected if a change is detected
      * Otherwise, it is resolved successfully
      *
-     * @returns {Object} $.Deferred
+     * @returns {Object} Deferred
      */
     function isRunningLatestVersionOfCode() {
         const promise = new Deferred();
@@ -47,7 +48,7 @@ export default function API(network, args) {
         network
             .get('/revision.txt')
             .done((codeRevision) => {
-                if (codeRevision.trim() === window.CODE_REVISION) {
+                if (Utils.isWindowAvailable() && codeRevision.trim() === window.CODE_REVISION) {
                     console.debug('Code revision is up to date');
                     promise.resolve();
                 } else {
@@ -74,7 +75,7 @@ export default function API(network, args) {
      * @param {String} apiDeferred
      */
     function attachJSONCodeCallbacks(apiDeferred) {
-        _(defaultHandlers).each((callbacks, code) => {
+        Object.entries(defaultHandlers).forEach(([code, callbacks]) => {
             // The key, `code`, is returned as a string, so we must cast it to an Integer
             const jsonCode = parseInt(code, 10);
             callbacks.forEach((callback) => {
@@ -104,7 +105,7 @@ export default function API(network, args) {
         let newParameters = {...parameters, command};
 
         // If there was an enhanceParameters() method supplied in our args, then we will call that here
-        if (args && _.isFunction(args.enhanceParameters)) {
+        if (args && Utils.isFunction(args.enhanceParameters)) {
             newParameters = args.enhanceParameters(newParameters);
         }
 
@@ -152,17 +153,19 @@ export default function API(network, args) {
     function requireParameters(parameterNames, parameters, commandName) {
         // eslint-disable-next-line rulesdir/prefer-early-return
         parameterNames.forEach((parameterName) => {
-            if (!_(parameters).has(parameterName) || parameters[parameterName] === null || parameters[parameterName] === undefined) {
-                const parametersCopy = _.clone(parameters);
-                if (_(parametersCopy).has('authToken')) {
-                    parametersCopy.authToken = '<redacted>';
-                }
-                if (_(parametersCopy).has('password')) {
-                    parametersCopy.password = '<redacted>';
-                }
-                const keys = _(parametersCopy).keys().join(', ') || 'none';
-                throw new Error(`Parameter ${parameterName} is required for "${commandName}". Supplied parameters: ${keys}`);
+            if (has(parameters, parameterName) && parameters[parameterName] !== null && parameters[parameterName] !== undefined) {
+                return;
             }
+
+            const parametersCopy = {...parameters};
+            if (has(parametersCopy, 'authToken')) {
+                parametersCopy.authToken = '<redacted>';
+            }
+            if (has(parametersCopy, 'password')) {
+                parametersCopy.password = '<redacted>';
+            }
+            const keys = Object.keys(parametersCopy).join(', ') || 'none';
+            throw new Error(`Parameter ${parameterName} is required for "${commandName}". Supplied parameters: ${keys}`);
         });
     }
 
@@ -172,7 +175,7 @@ export default function API(network, args) {
          * @param  {Function} callback
          */
         registerDefaultHandler(jsonCodes, callback) {
-            if (!_(callback).isFunction()) {
+            if (!Utils.isFunction(callback)) {
                 return;
             }
 
@@ -229,7 +232,7 @@ export default function API(network, args) {
 
             return (parameters, keepalive = false) => {
                 // Optional validate function for required logic before making the call. e.g. validating params in the front-end etc.
-                if (_.isFunction(data.validate)) {
+                if (Utils.isFunction(data.validate)) {
                     data.validate(parameters);
                 }
 
@@ -264,7 +267,7 @@ export default function API(network, args) {
             requireParameters(['email'], parameters, commandName);
 
             // Tell the API not to set cookies for this request
-            const newParameters = _.extend({api_setCookie: false}, parameters);
+            const newParameters = {...parameters, api_setCookie: false};
 
             return performPOSTRequest(commandName, newParameters);
         },
@@ -425,7 +428,7 @@ export default function API(network, args) {
             const commandName = 'ResetPassword';
             requireParameters(['email'], parameters, commandName);
 
-            const newParameters = _.extend({api_setCookie: false}, parameters);
+            const newParameters = {...parameters, api_setCookie: false};
             return performPOSTRequest(commandName, newParameters);
         },
 
